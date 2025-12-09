@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { Mail, Lock, Eye, EyeOff, Building2 } from 'lucide-react';
 import { User as UserType } from '@/lib/types';
-import { saveUser } from '@/lib/utils';
+import { saveUser } from '@/lib/data';
 
 interface LoginFormProps {
   onLogin: (user: UserType) => void;
@@ -14,29 +14,42 @@ export default function LoginForm({ onLogin }: LoginFormProps) {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState('');
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
+    setError('');
 
     try {
-      // Simular autenticação
+      // Validação básica
+      if (!email || !password) {
+        setError('Por favor, preencha todos os campos');
+        setIsLoading(false);
+        return;
+      }
+
+      // Simular autenticação (aqui você pode integrar com Supabase Auth)
       await new Promise(resolve => setTimeout(resolve, 1000));
 
-      // Criar usuário demo
-      const user = {
-        id: Date.now().toString(),
+      // Criar usuário e salvar no banco de dados
+      const user: UserType = {
+        id: `user-${Date.now()}`,
         email,
         name: email.split('@')[0],
-        tenantId: 'demo-tenant',
-        role: 'owner' as const,
+        tenantId: `tenant-${email.split('@')[0]}`,
+        role: 'owner',
         createdAt: new Date().toISOString()
       };
 
-      saveUser(user);
+      // Salvar usuário no banco de dados (Supabase ou localStorage)
+      await saveUser(user);
+
+      // Fazer login
       onLogin(user);
     } catch (error) {
       console.error('Erro no login:', error);
+      setError('Erro ao fazer login. Tente novamente.');
     } finally {
       setIsLoading(false);
     }
@@ -101,6 +114,12 @@ export default function LoginForm({ onLogin }: LoginFormProps) {
                 </button>
               </div>
             </div>
+
+            {error && (
+              <div className="bg-red-50 border border-red-200 rounded-xl p-3">
+                <p className="text-sm text-red-600">{error}</p>
+              </div>
+            )}
 
             <button
               type="submit"

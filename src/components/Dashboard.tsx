@@ -29,17 +29,20 @@ import {
 import { 
   calculateMetrics, 
   validateFormData,
-  saveAnalysisData, 
-  getAnalysisDataByPeriod,
   formatCurrency, 
   formatPercentage,
   normalizeNumber,
   exportToCSV,
   generateResultMessages,
-  generateTestData,
-  logout
+  generateTestData
 } from '@/lib/utils';
+import { 
+  saveAnalysis, 
+  loadAnalyses, 
+  deleteAnalysis
+} from '@/lib/data';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import CurrencyInput from '@/components/ui/currency-input';
 import DetailedAnalysis from '@/components/DetailedAnalysis';
 
 interface DashboardProps {
@@ -70,30 +73,24 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
     loadAnalysisData();
   }, [user.tenantId]);
 
-  const loadAnalysisData = () => {
+  const loadAnalysisData = async () => {
     try {
-      // Carregar dados salvos do localStorage
-      const savedData = localStorage.getItem(`ifood-analyses-${user.tenantId}`);
-      if (savedData) {
-        const parsedData = JSON.parse(savedData);
-        setSavedAnalyses(Array.isArray(parsedData) ? parsedData : []);
-      }
+      const analyses = await loadAnalyses(user.tenantId);
+      setSavedAnalyses(analyses);
     } catch (error) {
       console.error('Erro ao carregar dados salvos:', error);
       setSavedAnalyses([]);
     }
   };
 
-  const handleInputChange = (field: keyof FormData, value: string) => {
-    const numericValue = normalizeNumber(value);
+  const handleInputChange = (field: keyof FormData, value: number) => {
     setFormData(prev => ({
       ...prev,
-      [field]: numericValue
+      [field]: value
     }));
   };
 
   const handleAdditionalValueChange = (field: string, value: number) => {
-    // Se o campo contém "additionalValues.", extrair apenas o nome do campo
     const fieldName = field.includes('additionalValues.') ? field.split('.')[1] : field;
     
     setFormData(prev => ({
@@ -125,14 +122,13 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
     setIsSaving(true);
     
     try {
-      // Usar as datas de início e fim para criar o período de análise
       const periodString = `${startDate} até ${endDate}`;
       
       const analysisData: AnalysisData = {
         id: Date.now().toString(),
         formData: {
           ...formData,
-          periodo: periodString // Salvar com o período personalizado
+          periodo: periodString
         },
         calculatedData,
         timestamp: new Date().toISOString(),
@@ -140,32 +136,12 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
         tenantId: user.tenantId
       };
       
-      // Salvar no localStorage
-      const currentData = localStorage.getItem(`ifood-analyses-${user.tenantId}`);
-      let analyses: AnalysisData[] = [];
+      // Salvar usando a camada de dados (Supabase ou localStorage)
+      await saveAnalysis(analysisData);
       
-      if (currentData) {
-        try {
-          analyses = JSON.parse(currentData);
-          if (!Array.isArray(analyses)) {
-            analyses = [];
-          }
-        } catch (error) {
-          console.error('Erro ao parsear dados existentes:', error);
-          analyses = [];
-        }
-      }
+      // Recarregar análises
+      await loadAnalysisData();
       
-      // Adicionar nova análise
-      analyses.push(analysisData);
-      
-      // Salvar de volta no localStorage
-      localStorage.setItem(`ifood-analyses-${user.tenantId}`, JSON.stringify(analyses));
-      
-      // Atualizar estado local
-      setSavedAnalyses(analyses);
-      
-      // Feedback visual de sucesso
       alert('✅ Análise salva com sucesso!\n\n' + 
             `Período: ${periodString}\n` +
             `RBR: ${formatCurrency(calculatedData.rbr)}\n` +
@@ -180,36 +156,15 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
     }
   };
 
-  const handleDeleteAnalysis = (analysisId: string) => {
+  const handleDeleteAnalysis = async (analysisId: string) => {
     if (!analysisId) return;
 
     try {
-      // use updater function para evitar estado "stale"
-      setSavedAnalyses((prev) => {
-        const updated = prev.filter(a => a.id !== analysisId);
-
-        // persiste somente JSON puro
-        localStorage.setItem(
-          `ifood-analyses-${user.tenantId}`,
-          JSON.stringify(updated)
-        );
-
-        // log mínimo (sem objetos complexos)
-        console.log('✅ Análise excluída', {
-          analysisId,
-          remainingCount: updated.length,
-        });
-
-        return updated;
-      });
-
-      // se quiser feedback visual, use um toast do seu UI kit.
-      // evite window.alert/confirm dentro da Lasy/iframe
+      await deleteAnalysis(analysisId, user.tenantId);
+      await loadAnalysisData();
+      console.log('✅ Análise excluída:', analysisId);
     } catch (err) {
-      console.error('❌ Erro ao excluir análise', {
-        analysisId,
-        message: err instanceof Error ? err.message : String(err),
-      });
+      console.error('❌ Erro ao excluir análise:', err);
     }
   };
 
@@ -227,7 +182,6 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
       rentabilidadeLiquida: analysis.calculatedData.rentabilidadeLiquida,
       retencaoIfoodPercentual: analysis.calculatedData.retencaoIfoodPercentual,
       valorRetidoIfood: analysis.calculatedData.valorRetidoIfood,
-      // Novos campos da análise detalhada
       promocoes: analysis.formData.additionalValues.promocoes || 0,
       taxasComissoes: analysis.formData.additionalValues.taxasComissoes || 0,
       servicosLogisticos: analysis.formData.additionalValues.servicosLogisticos || 0,
@@ -250,15 +204,6 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
     setFormData({ ...testData, tenantId: user.tenantId });
   };
 
-  const handleLogout = () => {
-    logout();
-    onLogout();
-  };
-
-  // Todos os campos são editáveis agora
-  const canEdit = true;
-  const canView = true;
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-red-50 to-orange-50">
       {/* Header - Otimizado para mobile */}
@@ -276,7 +221,6 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
             </div>
 
             <div className="flex items-center gap-2 sm:gap-4 flex-shrink-0">
-              {/* User Info - Compacto em mobile */}
               <div className="flex items-center gap-2 sm:gap-3">
                 <div className="text-right hidden sm:block">
                   <div className="text-sm font-medium text-gray-900">{user.name}</div>
@@ -288,7 +232,7 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
                   <User className="w-3 h-3 sm:w-4 sm:h-4 text-white" />
                 </div>
                 <button
-                  onClick={handleLogout}
+                  onClick={onLogout}
                   className="p-1.5 sm:p-2 text-gray-400 hover:text-gray-600 transition-colors"
                 >
                   <LogOut className="w-3 h-3 sm:w-4 sm:h-4" />
@@ -301,7 +245,7 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
 
       <div className="max-w-7xl mx-auto p-3 sm:p-4 lg:p-8">
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 sm:gap-6 lg:gap-8">
-          {/* Formulário de Entrada - Otimizado para mobile */}
+          {/* Formulário de Entrada */}
           <div className="bg-white rounded-2xl sm:rounded-3xl shadow-xl p-4 sm:p-6 lg:p-8">
             <div className="flex items-center justify-between mb-4 sm:mb-6">
               <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
@@ -317,7 +261,7 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
             </div>
 
             <div className="space-y-4 sm:space-y-6">
-              {/* Período de Análise com Data de Início e Fim - SEMPRE EDITÁVEL */}
+              {/* Período de Análise */}
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-3">
                   Período de Análise
@@ -350,80 +294,60 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
                 </div>
               </div>
 
-              {/* Valor Bruto de Vendas - SEMPRE EDITÁVEL */}
+              {/* Valor Bruto de Vendas */}
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-2">
                   Valor Bruto de Vendas (VBV)
                   <Info className="inline w-3 h-3 sm:w-4 sm:h-4 ml-1 text-gray-400" title="Total bruto de vendas no período" />
                 </label>
-                <div className="relative">
-                  <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 sm:w-5 sm:h-5 text-gray-400" />
-                  <input
-                    type="text"
-                    value={formData.vbv || ''}
-                    onChange={(e) => handleInputChange('vbv', e.target.value)}
-                    placeholder="100.000,00"
-                    className="w-full pl-9 sm:pl-10 pr-3 sm:pr-4 py-2 sm:py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-red-500 focus:border-transparent transition-all text-sm sm:text-base"
-                  />
-                </div>
+                <CurrencyInput
+                  value={formData.vbv}
+                  onChange={(value) => handleInputChange('vbv', value)}
+                  placeholder="100.000,00"
+                />
               </div>
 
-              {/* Valores pagos pelo cliente - SEMPRE EDITÁVEL */}
+              {/* Valores pagos pelo cliente */}
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-2">
                   <span className="block sm:inline">Valores pagos pelo cliente</span>
                   <span className="block sm:inline"> e repassados ao iFood</span>
                   <Info className="inline w-3 h-3 sm:w-4 sm:h-4 ml-1 text-gray-400" title="Total de valores pagos pelo cliente e repassados ao iFood" />
                 </label>
-                <div className="relative">
-                  <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 sm:w-5 sm:h-5 text-gray-400" />
-                  <input
-                    type="text"
-                    value={formData.valoresPagosCliente || ''}
-                    onChange={(e) => handleInputChange('valoresPagosCliente', e.target.value)}
-                    placeholder="4.000,00"
-                    className="w-full pl-9 sm:pl-10 pr-3 sm:pr-4 py-2 sm:py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-red-500 focus:border-transparent transition-all text-sm sm:text-base"
-                  />
-                </div>
+                <CurrencyInput
+                  value={formData.valoresPagosCliente}
+                  onChange={(value) => handleInputChange('valoresPagosCliente', value)}
+                  placeholder="4.000,00"
+                />
               </div>
 
-              {/* Repasse Líquido iFood - SEMPRE EDITÁVEL */}
+              {/* Repasse Líquido iFood */}
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-2">
                   Repasse Líquido iFood (VRL)
                   <Info className="inline w-3 h-3 sm:w-4 sm:h-4 ml-1 text-gray-400" title="Valor efetivamente repassado pelo iFood à loja" />
                 </label>
-                <div className="relative">
-                  <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 sm:w-5 sm:h-5 text-gray-400" />
-                  <input
-                    type="text"
-                    value={formData.vrl || ''}
-                    onChange={(e) => handleInputChange('vrl', e.target.value)}
-                    placeholder="70.000,00"
-                    className="w-full pl-9 sm:pl-10 pr-3 sm:pr-4 py-2 sm:py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-red-500 focus:border-transparent transition-all text-sm sm:text-base"
-                  />
-                </div>
+                <CurrencyInput
+                  value={formData.vrl}
+                  onChange={(value) => handleInputChange('vrl', value)}
+                  placeholder="70.000,00"
+                />
               </div>
 
-              {/* Valores Recebidos via Loja - SEMPRE EDITÁVEL */}
+              {/* Valores Recebidos via Loja */}
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-2">
                   Valores Recebidos via Loja (VRLJ)
                   <Info className="inline w-3 h-3 sm:w-4 sm:h-4 ml-1 text-gray-400" title="Pagamentos recebidos diretamente (dinheiro/PIX/TEF)" />
                 </label>
-                <div className="relative">
-                  <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 sm:w-5 sm:h-5 text-gray-400" />
-                  <input
-                    type="text"
-                    value={formData.vrlj || ''}
-                    onChange={(e) => handleInputChange('vrlj', e.target.value)}
-                    placeholder="5.000,00"
-                    className="w-full pl-9 sm:pl-10 pr-3 sm:pr-4 py-2 sm:py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-red-500 focus:border-transparent transition-all text-sm sm:text-base"
-                  />
-                </div>
+                <CurrencyInput
+                  value={formData.vrlj}
+                  onChange={(value) => handleInputChange('vrlj', value)}
+                  placeholder="5.000,00"
+                />
               </div>
 
-              {/* Botões de ação - SEMPRE VISÍVEIS */}
+              {/* Botões de ação */}
               <div className="flex flex-col gap-3 pt-2 sm:pt-4">
                 <button
                   onClick={handleCalculate}
@@ -451,7 +375,7 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
               </div>
             </div>
 
-            {/* Validação - Otimizada para mobile */}
+            {/* Validação */}
             {validation && (
               <div className="mt-4 sm:mt-6 space-y-3">
                 {validation.errors.length > 0 && (
@@ -485,7 +409,7 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
             )}
           </div>
 
-          {/* Dashboard de Resultados - Otimizado para mobile */}
+          {/* Dashboard de Resultados */}
           <div className="bg-white rounded-2xl sm:rounded-3xl shadow-xl p-4 sm:p-6 lg:p-8">
             <div className="flex items-center justify-between mb-4 sm:mb-6">
               <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
@@ -515,7 +439,7 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
                 </TabsList>
 
                 <TabsContent value="overview" className="space-y-4 sm:space-y-6">
-                  {/* KPI Cards - Grid otimizado para mobile */}
+                  {/* KPI Cards */}
                   <div className="grid grid-cols-1 gap-3 sm:gap-4">
                     <div className="bg-gradient-to-r from-green-50 to-emerald-50 p-3 sm:p-4 rounded-xl border border-green-200">
                       <div className="text-xs sm:text-sm font-semibold text-green-700 mb-1">Receita Bruta Real</div>
@@ -555,7 +479,7 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
                     </div>
                   </div>
 
-                  {/* Mensagens de Resultado - Otimizadas para mobile */}
+                  {/* Mensagens de Resultado */}
                   <div className="bg-gray-50 p-4 sm:p-6 rounded-xl">
                     <h3 className="font-semibold text-gray-800 mb-3 text-sm sm:text-base">Resumo da Análise:</h3>
                     <div className="space-y-2">
@@ -565,7 +489,7 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
                     </div>
                   </div>
 
-                  {/* Botão Salvar - CORRIGIDO E FUNCIONAL */}
+                  {/* Botão Salvar */}
                   <button
                     onClick={handleSave}
                     disabled={isSaving}
@@ -601,7 +525,7 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
           </div>
         </div>
 
-        {/* Histórico de Análises - Otimizado para mobile */}
+        {/* Histórico de Análises */}
         {savedAnalyses.length > 0 && (
           <div className="mt-6 sm:mt-8 bg-white rounded-2xl sm:rounded-3xl shadow-xl p-4 sm:p-6 lg:p-8">
             <div className="flex items-center justify-between mb-4 sm:mb-6">
@@ -626,7 +550,7 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
                     </tr>
                   </thead>
                   <tbody>
-                    {savedAnalyses.slice(-10).reverse().map((analysis, index) => (
+                    {savedAnalyses.slice(-10).reverse().map((analysis) => (
                       <tr key={analysis.id} className="border-b border-gray-100 hover:bg-gray-50">
                         <td className="py-2 sm:py-3 px-2 sm:px-4 text-xs sm:text-sm font-medium text-gray-900">
                           {analysis.formData.periodo.includes(' até ') 
@@ -658,34 +582,15 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
                         <td className="py-2 sm:py-3 px-2 sm:px-4 text-center">
                           <button
                             type="button"
-                            // dispara em CAPTURA antes do overlay do host
-                            onClickCapture={(e) => {
+                            onClick={(e) => {
                               e.preventDefault();
                               e.stopPropagation();
                               handleDeleteAnalysis(analysis.id);
                             }}
-                            // fallback se o click for bloqueado
-                            onPointerDown={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              handleDeleteAnalysis(analysis.id);
-                            }}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter' || e.key === ' ') {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                handleDeleteAnalysis(analysis.id);
-                              }
-                            }}
-                            className="p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-red-500"
+                            className="p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-all duration-200"
                             title="Excluir análise"
-                            data-testid={`delete-${analysis.id}`}
-                            aria-label="Excluir análise"
-                            role="button"
-                            tabIndex={0}
                           >
-                            {/* Impede que o SVG capture o evento */}
-                            <Trash2 className="w-3 h-3 sm:w-4 sm:h-4 pointer-events-none" aria-hidden />
+                            <Trash2 className="w-3 h-3 sm:w-4 sm:h-4" />
                           </button>
                         </td>
                       </tr>

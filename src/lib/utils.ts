@@ -2,21 +2,53 @@
 import { type ClassValue } from "clsx";
 import clsx from "clsx";
 import { twMerge } from "tailwind-merge";
-import type { FormData, CalculatedData, AnalysisData, ValidationResult, User as UserType } from "./types";
+import type { FormData, CalculatedData, AnalysisData, ValidationResult } from "./types";
 
 /** Tailwind className helper */
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-/** Normaliza número digitado em PT-BR (pontos milhar, vírgula decimal) para float */
+/** 
+ * Normaliza número digitado em PT-BR (pontos milhar, vírgula decimal) para float
+ * Aceita formatos como: 50.889,20 | 1.234.567,89 | 123,45 | 1234,56
+ */
 export function normalizeNumber(value: string | number): number {
   if (typeof value === "number") return value;
   if (!value) return 0;
-  const clean = value
-    .replace(/[^\d.,-]/g, "")      // mantém dígitos, vírgula, ponto e sinal
-    .replace(/\.(?=.*\.)/g, "")    // remove pontos intermediários (milhar)
-    .replace(",", ".");            // vírgula -> ponto
+  
+  // Remove espaços e símbolos de moeda
+  let clean = String(value).trim()
+    .replace(/[R$\s]/g, "")  // Remove R$, espaços
+    .replace(/[^\d.,-]/g, ""); // Mantém apenas dígitos, ponto, vírgula e sinal
+  
+  // Se tem vírgula E ponto, assume formato BR: ponto=milhar, vírgula=decimal
+  if (clean.includes(',') && clean.includes('.')) {
+    // Remove todos os pontos (milhares) e troca vírgula por ponto (decimal)
+    clean = clean.replace(/\./g, "").replace(",", ".");
+  }
+  // Se tem APENAS vírgula, assume que é decimal
+  else if (clean.includes(',') && !clean.includes('.')) {
+    clean = clean.replace(",", ".");
+  }
+  // Se tem APENAS ponto(s), verifica se é milhar ou decimal
+  else if (clean.includes('.') && !clean.includes(',')) {
+    // Se tem múltiplos pontos, são milhares - remove todos
+    const dotCount = (clean.match(/\./g) || []).length;
+    if (dotCount > 1) {
+      clean = clean.replace(/\./g, "");
+    }
+    // Se tem apenas 1 ponto e está a 3 dígitos do final, é milhar
+    else if (dotCount === 1) {
+      const parts = clean.split('.');
+      if (parts[1] && parts[1].length === 3 && !parts[1].includes(',')) {
+        // É milhar: 1.000 -> 1000
+        clean = clean.replace('.', '');
+      }
+      // Senão, assume que é decimal: 123.45 -> 123.45
+    }
+  }
+  
   const n = parseFloat(clean);
   return Number.isFinite(n) ? n : 0;
 }
@@ -120,53 +152,4 @@ export function generateTestData(): FormData {
     periodo: new Date().toISOString().slice(0, 7),
     tenantId: "demo-tenant",
   };
-}
-
-/** Salva uma análise no localStorage (array por tenant) */
-export function saveAnalysisData(analysis: AnalysisData) {
-  if (typeof window === "undefined") return;
-  const key = `ifood-analyses-${analysis.tenantId}`;
-  const arr: AnalysisData[] = JSON.parse(localStorage.getItem(key) || "[]");
-  arr.push(analysis);
-  localStorage.setItem(key, JSON.stringify(arr));
-}
-
-/** Lê análises por período (string livre) */
-export function getAnalysisDataByPeriod(tenantId: string, contains: string): AnalysisData[] {
-  if (typeof window === "undefined") return [];
-  const key = `ifood-analyses-${tenantId}`;
-  const arr: AnalysisData[] = JSON.parse(localStorage.getItem(key) || "[]");
-  return arr.filter(a => (a.formData?.periodo || "").includes(contains));
-}
-
-/** Lê o usuário salvo no localStorage (protegido para SSR) */
-export function getCurrentUser(): UserType | null {
-  if (typeof window === "undefined") return null; // evita erro no SSR/Turbopack
-
-  try {
-    const raw = localStorage.getItem("ifood-user");
-    if (!raw) return null;
-
-    const user = JSON.parse(raw) as Partial<UserType>;
-    // validações mínimas
-    if (user && typeof user === "object" && user.id && user.tenantId) {
-      return user as UserType;
-    }
-    return null;
-  } catch {
-    return null;
-  }
-}
-
-/** Salva usuário "logado" no localStorage para reabrir sessão */
-export function saveUser(user: UserType) {
-  if (typeof window === "undefined") return;
-  localStorage.setItem("ifood-user", JSON.stringify(user));
-}
-
-/** "Logout" simples */
-export function logout() {
-  if (typeof window === "undefined") return;
-  // Se quiser limpar só o usuário, mantenha as análises
-  localStorage.removeItem("ifood-user");
 }

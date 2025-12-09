@@ -25,6 +25,7 @@ import {
 import { FormData, CalculatedData } from '@/lib/types';
 import { formatCurrency, formatPercentageDirect, normalizeNumber } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
+import CurrencyInput from '@/components/ui/currency-input';
 
 interface DetailedAnalysisProps {
   formData: FormData;
@@ -37,27 +38,8 @@ export default function DetailedAnalysis({
   calculatedData, 
   onUpdateFormData 
 }: DetailedAnalysisProps) {
-  const [inputValues, setInputValues] = useState({
-    promocoes: '',
-    taxasComissoes: '',
-    servicosLogisticos: '',
-    outrosValores: ''
-  });
-
-  // Sincronizar valores dos inputs com formData
-  useEffect(() => {
-    setInputValues({
-      promocoes: formData.additionalValues.promocoes?.toString() || '',
-      taxasComissoes: formData.additionalValues.taxasComissoes?.toString() || '',
-      servicosLogisticos: formData.additionalValues.servicosLogisticos?.toString() || '',
-      outrosValores: formData.additionalValues.outrosValores?.toString() || ''
-    });
-  }, [formData.additionalValues]);
-
-  const handleInputChange = (field: string, value: string) => {
-    setInputValues(prev => ({ ...prev, [field]: value }));
-    const numericValue = normalizeNumber(value);
-    onUpdateFormData(`additionalValues.${field}`, numericValue);
+  const handleInputChange = (field: string, value: number) => {
+    onUpdateFormData(`additionalValues.${field}`, value);
   };
 
   // Cálculos da análise detalhada
@@ -116,21 +98,13 @@ export default function DetailedAnalysis({
               Gastos com Promoções
               <Info className="inline w-3 h-3 ml-1 text-gray-400" title="Valores gastos com promoções e descontos" />
             </label>
-            <div className="relative">
-              <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" aria-hidden />
-              <input
-                type="text"
-                value={inputValues.promocoes}
-                onChange={(e) => handleInputChange('promocoes', e.target.value)}
-                placeholder="Ex.: 2.500,00"
-                className={`w-full pl-9 pr-3 py-2 sm:py-3 border rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all text-sm sm:text-base ${
-                  hasDebitosError ? 'border-red-300 bg-red-50' : 'border-gray-200'
-                }`}
-                aria-label="Gastos com promoções"
-                aria-describedby="promocoes-help"
-              />
-            </div>
-            <p id="promocoes-help" className="text-xs text-gray-500 mt-1">
+            <CurrencyInput
+              value={promocoes}
+              onChange={(value) => handleInputChange('promocoes', value)}
+              placeholder="2.500,00"
+              className={hasDebitosError ? 'border-red-300 bg-red-50' : ''}
+            />
+            <p className="text-xs text-gray-500 mt-1">
               Valores investidos em promoções e descontos
             </p>
           </div>
@@ -141,21 +115,13 @@ export default function DetailedAnalysis({
               Taxas/Comissões iFood
               <Info className="inline w-3 h-3 ml-1 text-gray-400" title="Taxas e comissões cobradas pelo iFood" />
             </label>
-            <div className="relative">
-              <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" aria-hidden />
-              <input
-                type="text"
-                value={inputValues.taxasComissoes}
-                onChange={(e) => handleInputChange('taxasComissoes', e.target.value)}
-                placeholder="Ex.: 1.200,00"
-                className={`w-full pl-9 pr-3 py-2 sm:py-3 border rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all text-sm sm:text-base ${
-                  hasDebitosError ? 'border-red-300 bg-red-50' : 'border-gray-200'
-                }`}
-                aria-label="Taxas e comissões iFood"
-                aria-describedby="taxas-help"
-              />
-            </div>
-            <p id="taxas-help" className="text-xs text-gray-500 mt-1">
+            <CurrencyInput
+              value={taxasComissoes}
+              onChange={(value) => handleInputChange('taxasComissoes', value)}
+              placeholder="1.200,00"
+              className={hasDebitosError ? 'border-red-300 bg-red-50' : ''}
+            />
+            <p className="text-xs text-gray-500 mt-1">
               Taxas e comissões cobradas pela plataforma
             </p>
           </div>
@@ -166,21 +132,13 @@ export default function DetailedAnalysis({
               Serviços Logísticos
               <Info className="inline w-3 h-3 ml-1 text-gray-400" title="Custos com logística e entrega" />
             </label>
-            <div className="relative">
-              <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" aria-hidden />
-              <input
-                type="text"
-                value={inputValues.servicosLogisticos}
-                onChange={(e) => handleInputChange('servicosLogisticos', e.target.value)}
-                placeholder="Ex.: 800,00"
-                className={`w-full pl-9 pr-3 py-2 sm:py-3 border rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all text-sm sm:text-base ${
-                  hasDebitosError ? 'border-red-300 bg-red-50' : 'border-gray-200'
-                }`}
-                aria-label="Serviços logísticos"
-                aria-describedby="logistica-help"
-              />
-            </div>
-            <p id="logistica-help" className="text-xs text-gray-500 mt-1">
+            <CurrencyInput
+              value={servicosLogisticos}
+              onChange={(value) => handleInputChange('servicosLogisticos', value)}
+              placeholder="800,00"
+              className={hasDebitosError ? 'border-red-300 bg-red-50' : ''}
+            />
+            <p className="text-xs text-gray-500 mt-1">
               Custos com logística, entrega e transporte
             </p>
           </div>
@@ -191,21 +149,13 @@ export default function DetailedAnalysis({
               Outros Débitos
               <Info className="inline w-3 h-3 ml-1 text-gray-400" title="Outros valores debitados" />
             </label>
-            <div className="relative">
-              <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" aria-hidden />
-              <input
-                type="text"
-                value={inputValues.outrosValores}
-                onChange={(e) => handleInputChange('outrosValores', e.target.value)}
-                placeholder="Ex.: 300,00"
-                className={`w-full pl-9 pr-3 py-2 sm:py-3 border rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all text-sm sm:text-base ${
-                  hasDebitosError ? 'border-red-300 bg-red-50' : 'border-gray-200'
-                }`}
-                aria-label="Outros débitos"
-                aria-describedby="outros-help"
-              />
-            </div>
-            <p id="outros-help" className="text-xs text-gray-500 mt-1">
+            <CurrencyInput
+              value={outrosValores}
+              onChange={(value) => handleInputChange('outrosValores', value)}
+              placeholder="300,00"
+              className={hasDebitosError ? 'border-red-300 bg-red-50' : ''}
+            />
+            <p className="text-xs text-gray-500 mt-1">
               Outros valores debitados não categorizados
             </p>
           </div>

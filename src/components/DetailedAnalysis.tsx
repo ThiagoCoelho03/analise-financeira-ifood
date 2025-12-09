@@ -50,7 +50,9 @@ export default function DetailedAnalysis({
   
   const debitosDetalhados = promocoes + taxasComissoes + servicosLogisticos + outrosValores;
   const rbrPosDebitos = calculatedData.rbr - debitosDetalhados;
-  const repasseLiquidoReal = rbrPosDebitos + normalizeNumber(formData.vrlj);
+  
+  // ✅ ALTERAÇÃO: Repasse Líquido Real = RBR Pós-Débitos (mesmo valor)
+  const repasseLiquidoReal = rbrPosDebitos;
   
   // Percentuais sobre RBR
   const percentuais = {
@@ -226,12 +228,12 @@ export default function DetailedAnalysis({
             <div className="text-xl font-bold text-purple-800">{formatCurrency(normalizeNumber(formData.vrlj))}</div>
           </div>
 
-          {/* Repasse Líquido Real */}
+          {/* Repasse Líquido Real - AGORA IGUAL AO RBR PÓS-DÉBITOS */}
           <div className="bg-gradient-to-r from-cyan-50 to-teal-50 p-4 rounded-xl border border-cyan-200 sm:col-span-2">
             <div className="text-sm font-semibold text-cyan-700 mb-1 flex items-center gap-2">
               Repasse Líquido Real
               <Badge variant="secondary" className="text-xs">
-                Número final de repasse
+                = RBR Pós-Débitos
               </Badge>
             </div>
             <div className="text-2xl font-bold text-cyan-800">{formatCurrency(repasseLiquidoReal)}</div>
